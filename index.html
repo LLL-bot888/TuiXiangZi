@@ -1,0 +1,638 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>推箱子 · 像素推箱</title>
+<style>
+/* ========== 全局重置 & 像素风格基础 ========== */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;touch-action:manipulation}
+body{
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:#1a1a2e;color:#e0e0e0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* 主容器 */
+.game-wrapper{
+  display:flex;flex-direction:column;align-items:center;
+  gap:12px;padding:12px;max-width:500px;width:100%;
+}
+
+/* 标题 */
+.game-title{
+  font-size:clamp(18px,4vw,26px);font-weight:800;
+  letter-spacing:4px;color:#ffd166;
+  text-shadow:0 2px 0 #b8860b,2px 2px 0 rgba(0,0,0,.3);
+}
+
+/* 信息栏 */
+.info-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;max-width:420px;
+  background:#16213e;border-radius:10px;padding:8px 14px;
+  border:2px solid #0f3460;gap:8px;flex-wrap:wrap;
+}
+.info-item{font-size:14px;font-weight:600;white-space:nowrap}
+.info-item span{color:#ffd166;margin-left:4px}
+.btn-reset{
+  background:#e94560;color:#fff;border:none;
+  padding:6px 14px;border-radius:6px;font-size:13px;font-weight:700;
+  cursor:pointer;letter-spacing:1px;
+  transition:transform .1s,background .2s;
+}
+.btn-reset:active{transform:scale(.94);background:#c73852}
+
+/* 关卡选择 */
+.level-selector{
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center;
+}
+.level-btn{
+  background:#0f3460;color:#ccc;border:2px solid transparent;
+  padding:5px 12px;border-radius:20px;font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .2s;
+}
+.level-btn:hover{background:#1a508b;color:#fff}
+.level-btn.active{background:#ffd166;color:#1a1a2e;border-color:#ffd166;font-weight:800}
+
+/* 游戏画布区 */
+.game-board-container{
+  position:relative;
+  background:#0a0a1a;border-radius:12px;
+  padding:clamp(6px,2vw,14px);
+  border:3px solid #0f3460;
+  box-shadow:0 0 20px rgba(15,52,96,.5),inset 0 0 30px rgba(0,0,0,.4);
+}
+.game-board{
+  display:grid;
+  gap:2px;
+}
+
+/* 格子 */
+.cell{
+  width:clamp(32px,8vw,50px);height:clamp(32px,8vw,50px);
+  border-radius:4px;
+  transition:background .15s,transform .1s,box-shadow .15s;
+}
+.cell.floor{background:#2d2d44}
+.cell.wall{
+  background:linear-gradient(135deg,#5c5c8a 0%,#3d3d5c 50%,#2a2a40 100%);
+  border:1px solid #4a4a6a;box-shadow:inset 2px 2px 0 rgba(255,255,255,.08),inset -2px -2px 0 rgba(0,0,0,.3);
+  border-radius:4px;
+}
+.cell.target{
+  background:#2d2d44;
+  position:relative;
+}
+.cell.target::after{
+  content:"";position:absolute;
+  top:50%;left:50%;transform:translate(-50%,-50%);
+  width:28%;height:28%;
+  background:radial-gradient(circle,#ff6b6b 0%,#c0392b 100%);
+  border-radius:50%;
+  box-shadow:0 0 8px rgba(255,100,100,.6);
+}
+.cell.player{
+  background:#00d2ff;
+  border-radius:30% 30% 20% 20%;
+  box-shadow:0 0 12px rgba(0,210,255,.5),inset 0 2px 0 rgba(255,255,255,.3);
+  position:relative;
+}
+.cell.player::after{
+  content:"";position:absolute;
+  top:25%;left:50%;transform:translateX(-50%);
+  width:10px;height:6px;
+  background:#1a1a2e;
+  border-radius:0 0 3px 3px;
+}
+.cell.player::before{
+  content:"";position:absolute;
+  top:18%;left:30%;width:5px;height:5px;background:#fff;border-radius:50%;
+  box-shadow:12px 0 0 #fff;
+}
+.cell.box{
+  background:linear-gradient(135deg,#f0a500 0%,#cc7a00 50%,#a06000 100%);
+  border-radius:6px;
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.2),inset -2px -2px 0 rgba(0,0,0,.3);
+  border:2px solid rgba(0,0,0,.15);
+}
+.cell.box-done{
+  background:linear-gradient(135deg,#2ecc71 0%,#1e8449 50%,#145a32 100%);
+  border-radius:6px;
+  box-shadow:0 0 14px rgba(46,204,113,.6),inset 2px 2px 0 rgba(255,255,255,.2),inset -2px -2px 0 rgba(0,0,0,.2);
+  border:2px solid rgba(255,255,255,.15);
+  animation:boxPulse .4s ease;
+}
+@keyframes boxPulse{
+  0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}
+}
+
+/* ========== 移动端虚拟方向键 ========== */
+.mobile-controls{
+  display:none;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  grid-template-columns:repeat(3,60px);
+  grid-template-rows:repeat(3,60px);
+  gap:6px;justify-content:center;margin-top:6px;
+}
+.dpad-btn{
+  width:60px;height:60px;
+  background:linear-gradient(135deg,#2d2d5e,#1a1a3e);
+  border:2px solid #4a4a8a;border-radius:12px;
+  color:#ddd;font-size:26px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .1s;
+  box-shadow:0 3px 0 #0a0a2e;
+}
+.dpad-btn:active{
+  transform:translateY(2px);
+  box-shadow:0 1px 0 #0a0a2e;
+  background:linear-gradient(135deg,#4a4a8a,#2d2d5e);
+  color:#fff;
+}
+.dpad-up{grid-area:up}
+.dpad-down{grid-area:down}
+.dpad-left{grid-area:left}
+.dpad-right{grid-area:right}
+
+/* 手机端显示方向键 */
+@media (max-width:768px),(pointer:coarse){
+  .mobile-controls{display:grid}
+}
+
+/* ========== 通关弹窗 ========== */
+.modal-overlay{
+  display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.75);z-index:100;
+  align-items:center;justify-content:center;
+  animation:fadeIn .25s ease;
+}
+.modal-overlay.show{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-box{
+  background:linear-gradient(145deg,#16213e,#0f3460);
+  border:2px solid #ffd166;border-radius:18px;
+  padding:28px 24px;text-align:center;max-width:340px;width:90%;
+  box-shadow:0 0 40px rgba(255,209,102,.3);
+  animation:popIn .35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-icon{font-size:52px;margin-bottom:8px}
+.modal-title{font-size:24px;color:#ffd166;font-weight:800;margin-bottom:4px}
+.modal-msg{font-size:14px;color:#bbb;margin-bottom:20px}
+.modal-btn{
+  display:inline-block;background:#ffd166;color:#1a1a2e;
+  border:none;padding:10px 24px;border-radius:22px;font-size:15px;
+  font-weight:700;margin:6px;cursor:pointer;letter-spacing:1px;
+  transition:transform .1s,background .2s;
+}
+.modal-btn:active{transform:scale(.94)}
+.modal-btn.secondary{background:transparent;color:#ffd166;border:2px solid #ffd166}
+
+/* 手机端缩小弹窗字体 */
+@media (max-width:480px){
+  .modal-box{padding:20px 16px}
+  .modal-title{font-size:20px}
+  .modal-icon{font-size:40px}
+}
+</style>
+</head>
+<body>
+
+<div class="game-wrapper">
+  <div class="game-title">推 箱 子</div>
+
+  <!-- 关卡选择 -->
+  <div class="level-selector" id="levelSelector"></div>
+
+  <!-- 信息栏 -->
+  <div class="info-bar">
+    <div class="info-item">关卡：<span id="levelName">第一关</span></div>
+    <div class="info-item">步数：<span id="moveCount">0</span></div>
+    <button class="btn-reset" id="btnReset" title="重置当前关卡">重置</button>
+  </div>
+
+  <!-- 游戏棋盘 -->
+  <div class="game-board-container">
+    <div class="game-board" id="gameBoard"></div>
+  </div>
+
+  <!-- 手机端方向键 -->
+  <div class="mobile-controls" id="mobileControls">
+    <button class="dpad-btn dpad-up"    data-dir="up">▲</button>
+    <button class="dpad-btn dpad-left"  data-dir="left">◀</button>
+    <button class="dpad-btn dpad-right" data-dir="right">▶</button>
+    <button class="dpad-btn dpad-down"  data-dir="down">▼</button>
+  </div>
+</div>
+
+<!-- 通关弹窗 -->
+<div class="modal-overlay" id="winModal">
+  <div class="modal-box">
+    <div class="modal-icon">🎉</div>
+    <div class="modal-title">恭喜通关！</div>
+    <div class="modal-msg" id="winMsg"></div>
+    <button class="modal-btn" id="btnNext">下一关</button>
+    <button class="modal-btn secondary" id="btnReplay">重玩本关</button>
+  </div>
+</div>
+
+<script>
+/* ===================================================================
+   推箱子 · 像素推箱 — 支持推拉箱子
+   字符含义: "#"墙壁  " "空地  "."目标点  "$"箱子  "@"玩家  "*"箱子在目标上  "+"玩家在目标上
+   =================================================================== */
+
+// ==================== 关卡数据（可自行新增、修改） ====================
+var LEVELS = [
+  {
+    name: "第一关 · 初识推箱",
+    map: [
+      "#####",
+      "#   #",
+      "# $ #",
+      "# @.#",
+      "#   #",
+      "#####"
+    ]
+  },
+  {
+    name: "第二关 · 渐入佳境",
+    map: [
+      "######",
+      "# .  #",
+      "# $  #",
+      "#  @ #",
+      "#  $.#",
+      "######"
+    ]
+  },
+  {
+    name: "第三关 · 小试牛刀",
+    map: [
+      "######",
+      "#... #",
+      "# $  #",
+      "#  $ #",
+      "# @ $#",
+      "######"
+    ]
+  },
+  {
+    name: "第四关 · 高手之路",
+    map: [
+      "########",
+      "#  ..  #",
+      "# $  $ #",
+      "#   #  #",
+      "# $ @$ #",
+      "#  ..  #",
+      "########"
+    ]
+  },
+  {
+    name: "第五关 · 炉火纯青",
+    map: [
+      "########",
+      "# ..   #",
+      "# $  $ #",
+      "#   @  #",
+      "# $  $ #",
+      "#   .. #",
+      "########"
+    ]
+  }
+];
+
+// ==================== 游戏状态 ====================
+var currentLevel = 0;
+var moveCount = 0;
+var playerX, playerY;
+var boxes = [];           // [{x, y}, ...]
+var wallGrid = [];        // 2D boolean
+var targetGrid = [];      // 2D boolean
+var rows = 0, cols = 0;
+var gameWon = false;
+
+// ==================== Web Audio 音效系统（原生生成，无外部依赖） ====================
+var audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function playBeep(freq, type, duration, vol, slide) {
+  try {
+    var ctx = getAudioCtx();
+    var t = ctx.currentTime;
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = type || "square";
+    osc.frequency.setValueAtTime(freq, t);
+    if (slide) osc.frequency.linearRampToValueAtTime(slide, t + duration);
+    gain.gain.setValueAtTime(vol || 0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + duration);
+  } catch (e) { /* 静默处理 */ }
+}
+
+function sfxMove()  { playBeep(260, "square",   0.08, 0.06); }
+function sfxPush()  { playBeep(180, "triangle", 0.12, 0.08, 260); }
+function sfxPull()  { playBeep(300, "sine",     0.10, 0.07, 200); }
+function sfxWin()   {
+  [523, 659, 784, 1047].forEach(function(f, i) {
+    setTimeout(function() { playBeep(f, "triangle", 0.18, 0.1); }, i * 100);
+  });
+}
+function sfxClick() { playBeep(600, "sine", 0.06, 0.05); }
+
+// ==================== 关卡加载与解析 ====================
+function loadLevel(index) {
+  var level = LEVELS[index];
+  var map = level.map;
+  rows = map.length;
+  cols = 0;
+  for (var i = 0; i < rows; i++) { if (map[i].length > cols) cols = map[i].length; }
+
+  // 初始化数据结构
+  wallGrid = []; targetGrid = []; boxes = [];
+  for (var r = 0; r < rows; r++) {
+    wallGrid[r] = []; targetGrid[r] = [];
+    for (var c = 0; c < cols; c++) {
+      wallGrid[r][c] = false;
+      targetGrid[r][c] = false;
+    }
+  }
+
+  // 逐字符解析地图
+  for (var r = 0; r < rows; r++) {
+    var line = map[r];
+    for (var c = 0; c < cols; c++) {
+      var ch = c < line.length ? line[c] : " ";
+      switch (ch) {
+        case "#": wallGrid[r][c] = true; break;
+        case ".": targetGrid[r][c] = true; break;
+        case "@": playerX = c; playerY = r; break;
+        case "+": playerX = c; playerY = r; targetGrid[r][c] = true; break;
+        case "$": boxes.push({ x: c, y: r }); break;
+        case "*": boxes.push({ x: c, y: r }); targetGrid[r][c] = true; break;
+      }
+    }
+  }
+
+  moveCount = 0;
+  gameWon = false;
+  updateUI();
+  renderBoard();
+}
+
+// ==================== 查询坐标上的箱子索引 ====================
+function getBoxAt(x, y) {
+  for (var i = 0; i < boxes.length; i++) {
+    if (boxes[i].x === x && boxes[i].y === y) return i;
+  }
+  return -1;
+}
+
+// ==================== 通关判定 ====================
+function checkWin() {
+  for (var i = 0; i < boxes.length; i++) {
+    if (!targetGrid[boxes[i].y] || !targetGrid[boxes[i].y][boxes[i].x]) return false;
+  }
+  return true;
+}
+
+// ==================== 玩家移动（核心逻辑） ====================
+function movePlayer(dx, dy) {
+  if (gameWon) return;
+
+  var nx = playerX + dx;
+  var ny = playerY + dy;
+
+  // 边界 / 墙壁碰撞
+  if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) return;
+  if (wallGrid[ny][nx]) return;
+
+  var boxIdx = getBoxAt(nx, ny);
+  if (boxIdx >= 0) {
+    // 推箱子：检查箱子前方是否可进入
+    var bx = nx + dx;
+    var by = ny + dy;
+    if (bx < 0 || bx >= cols || by < 0 || by >= rows) return;
+    if (wallGrid[by][bx]) return;
+    if (getBoxAt(bx, by) >= 0) return;   // 不能连推两个箱子
+
+    // 执行推动
+    boxes[boxIdx].x = bx;
+    boxes[boxIdx].y = by;
+    playerX = nx;
+    playerY = ny;
+    moveCount++;
+    sfxPush();
+  } else {
+    // 检查身后是否有箱子可以拉（反方向）
+    var behindX = playerX - dx;
+    var behindY = playerY - dy;
+    var boxBehind = getBoxAt(behindX, behindY);
+    if (boxBehind >= 0) {
+      // 拉箱子：箱子跟随玩家移动到玩家原位置
+      boxes[boxBehind].x = playerX;
+      boxes[boxBehind].y = playerY;
+      playerX = nx;
+      playerY = ny;
+      moveCount++;
+      sfxPull();
+    } else {
+      // 普通移动
+      playerX = nx;
+      playerY = ny;
+      moveCount++;
+      sfxMove();
+    }
+  }
+
+  renderBoard();
+  updateUI();
+
+  // 通关检测
+  if (checkWin()) {
+    gameWon = true;
+    sfxWin();
+    setTimeout(showWinModal, 400);
+  }
+}
+
+// ==================== 棋盘渲染 ====================
+function renderBoard() {
+  var board = document.getElementById("gameBoard");
+  board.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+  board.style.gridTemplateRows = "repeat(" + rows + ", 1fr)";
+  board.innerHTML = "";
+
+  for (var r = 0; r < rows; r++) {
+    for (var c = 0; c < cols; c++) {
+      var cell = document.createElement("div");
+      cell.className = "cell";
+
+      var isWall = wallGrid[r][c];
+      var isTarget = targetGrid[r][c];
+      var isPlayer = (c === playerX && r === playerY);
+      var boxIdx = getBoxAt(c, r);
+      var hasBox = boxIdx >= 0;
+      var boxOnTarget = hasBox && isTarget;
+
+      if (isWall) {
+        cell.classList.add("wall");
+      } else {
+        cell.classList.add("floor");
+        if (isTarget && !boxOnTarget) cell.classList.add("target");
+        if (hasBox) cell.classList.add(boxOnTarget ? "box-done" : "box");
+        if (isPlayer) {
+          cell.classList.add("player");
+          if (isTarget) cell.classList.add("target");
+        }
+      }
+      board.appendChild(cell);
+    }
+  }
+}
+
+// ==================== UI 更新 ====================
+function updateUI() {
+  document.getElementById("levelName").textContent = LEVELS[currentLevel].name;
+  document.getElementById("moveCount").textContent = moveCount;
+
+  var btns = document.querySelectorAll(".level-btn");
+  btns.forEach(function(btn, i) {
+    btn.classList.toggle("active", i === currentLevel);
+  });
+}
+
+// ==================== 构建关卡切换按钮 ====================
+function buildLevelSelector() {
+  var container = document.getElementById("levelSelector");
+  container.innerHTML = "";
+  LEVELS.forEach(function(_, i) {
+    var btn = document.createElement("button");
+    btn.className = "level-btn" + (i === currentLevel ? " active" : "");
+    btn.textContent = "第" + (i + 1) + "关";
+    btn.addEventListener("click", function() {
+      if (i === currentLevel) return;
+      sfxClick();
+      currentLevel = i;
+      loadLevel(currentLevel);
+    });
+    container.appendChild(btn);
+  });
+}
+
+// ==================== 通关弹窗 ====================
+function showWinModal() {
+  var modal = document.getElementById("winModal");
+  var msg = document.getElementById("winMsg");
+  msg.textContent = "你用了 " + moveCount + " 步完成了「" + LEVELS[currentLevel].name + "」！";
+  modal.classList.add("show");
+
+  var btnNext = document.getElementById("btnNext");
+  btnNext.style.display = currentLevel < LEVELS.length - 1 ? "inline-block" : "none";
+}
+
+function hideWinModal() {
+  document.getElementById("winModal").classList.remove("show");
+}
+
+// ==================== 重置关卡 ====================
+function resetLevel() {
+  hideWinModal();
+  loadLevel(currentLevel);
+}
+
+// ==================== 事件绑定 ====================
+
+// 键盘操控（方向键 + WASD + R 重置）
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && gameWon) {
+    e.preventDefault();
+    if (currentLevel < LEVELS.length - 1) {
+      currentLevel++;
+      loadLevel(currentLevel);
+    }
+    return;
+  }
+  switch (e.key) {
+    case "ArrowUp":    case "w": case "W": e.preventDefault(); movePlayer(0, -1); break;
+    case "ArrowDown":  case "s": case "S": e.preventDefault(); movePlayer(0,  1); break;
+    case "ArrowLeft":  case "a": case "A": e.preventDefault(); movePlayer(-1, 0); break;
+    case "ArrowRight": case "d": case "D": e.preventDefault(); movePlayer(1,  0); break;
+    case "r": case "R": e.preventDefault(); resetLevel(); break;
+  }
+});
+
+// 移动端虚拟方向键
+document.querySelectorAll(".dpad-btn").forEach(function(btn) {
+  // 点击事件
+  btn.addEventListener("click", function() {
+    var dir = this.getAttribute("data-dir");
+    switch (dir) {
+      case "up":    movePlayer(0, -1); break;
+      case "down":  movePlayer(0,  1); break;
+      case "left":  movePlayer(-1, 0); break;
+      case "right": movePlayer(1,  0); break;
+    }
+  });
+  // 触摸事件（阻止双击缩放）
+  btn.addEventListener("touchstart", function(e) {
+    e.preventDefault();
+    this.click();
+  });
+});
+
+// 重置按钮
+document.getElementById("btnReset").addEventListener("click", function() {
+  sfxClick();
+  resetLevel();
+});
+
+// 弹窗按钮
+document.getElementById("btnNext").addEventListener("click", function() {
+  sfxClick();
+  hideWinModal();
+  if (currentLevel < LEVELS.length - 1) {
+    currentLevel++;
+    loadLevel(currentLevel);
+  }
+});
+
+document.getElementById("btnReplay").addEventListener("click", function() {
+  sfxClick();
+  resetLevel();
+});
+
+// 点击弹窗遮罩关闭
+document.getElementById("winModal").addEventListener("click", function(e) {
+  if (e.target === this) hideWinModal();
+});
+
+// 移动端手势防缩放
+document.addEventListener("gesturestart", function(e) { e.preventDefault(); });
+document.addEventListener("gesturechange", function(e) { e.preventDefault(); });
+document.addEventListener("gestureend", function(e) { e.preventDefault(); });
+
+// ==================== 启动游戏 ====================
+buildLevelSelector();
+loadLevel(0);
+</script>
+</body>
+</html>
